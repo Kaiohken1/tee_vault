@@ -48,29 +48,32 @@ void read_input(InputBuffer *input_buffer)
 
 void client_read_data(TEEC_Session sess, TEEC_Operation op) {
 	InputBuffer *obj_id = new();
-	InputBuffer *obj_read_data = new();
+	// InputBuffer *obj_read_data = new();
+	//TODO Change read buffer
+	char read_data[7000];
 	uint32_t err_origin;
+	TEEC_Result res;
 
 	printf("vault > Write entry name to search : ");
 	read_input(obj_id);
 
-	op.paramTypes = TEEC_PARAM_TYPES(TEEC_MEMREF_TEMP_INPUT, TEEC_MEMREF_PARTIAL_OUTPUT,
+	op.paramTypes = TEEC_PARAM_TYPES(TEEC_MEMREF_TEMP_INPUT, TEEC_MEMREF_TEMP_OUTPUT,
 									 TEEC_NONE, TEEC_NONE);
 	
 	op.params[0].tmpref.buffer = obj_id->buffer;
 	op.params[0].tmpref.size = obj_id->input_length;
 
-	op.params[1].tmpref.buffer = obj_read_data->buffer;
-	op.params[1].tmpref.size = 7000;
+	op.params[1].tmpref.buffer = read_data;
+	op.params[1].tmpref.size = sizeof(read_data);
 
-	TEEC_Result res = TEEC_InvokeCommand(&sess, TA_VAULT_CMD_READ_DATA, &op,
+	res = TEEC_InvokeCommand(&sess, TA_VAULT_CMD_READ_DATA, &op,
 					&err_origin);
 	
 	if (res != TEEC_SUCCESS)
 		errx(1, "vault > Failed to read data : code 0x%x origin 0x%u",
 			res, err_origin);
 	
-	printf("vault > data read : %p", op.params[1].tmpref.buffer);
+	printf("vault > data read : %s\n", op.params[1].tmpref.buffer);
 }
 
 void client_write_data(TEEC_Session sess, TEEC_Operation op) {

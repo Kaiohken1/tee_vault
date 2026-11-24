@@ -57,7 +57,7 @@ void secure_free(void *buffer, size_t buffer_size)
 TEE_Result read_data(uint32_t params_types, TEE_Param params[4])
 {
 	uint32_t exp_param_types = TEE_PARAM_TYPES(TEE_PARAM_TYPE_MEMREF_INPUT,
-											   TEE_PARAM_TYPE_MEMREF_INOUT,
+											   TEE_PARAM_TYPE_MEMREF_OUTPUT,
 											   TEE_PARAM_TYPE_NONE,
 											   TEE_PARAM_TYPE_NONE);
 
@@ -73,11 +73,23 @@ TEE_Result read_data(uint32_t params_types, TEE_Param params[4])
 	}
 
 	size_t obj_id_size = params[0].memref.size;
-	char *obj_id = params[0].memref.buffer;
+	char *obj_id = TEE_Malloc(obj_id_size, 0);
+	if (!obj_id) {
+		return TEE_ERROR_OUT_OF_MEMORY;
+	}
 
-	char *obj_data = params[1].memref.buffer;
+	TEE_MemMove(obj_id, params[0].memref.buffer, obj_id_size);
 
-	uint32_t flags = TEE_DATA_FLAG_ACCESS_WRITE | TEE_DATA_FLAG_ACCESS_READ | TEE_DATA_FLAG_ACCESS_WRITE_META | TEE_DATA_FLAG_OVERWRITE;
+	size_t obj_data_size = params[1].memref.size;
+	char *obj_data = TEE_Malloc(obj_data_size, 0);
+	if (!obj_data) {
+		secure_free(obj_id, obj_id_size);
+		return TEE_ERROR_OUT_OF_MEMORY;
+	}
+
+	TEE_MemMove(obj_data, params[1].memref.buffer, obj_data_size);
+
+	uint32_t flags = TEE_DATA_FLAG_ACCESS_READ | TEE_DATA_FLAG_SHARE_READ;
 	TEE_ObjectHandle object = TEE_HANDLE_NULL;
 	TEE_Result res;
 	TEE_ObjectInfo object_info = { };
@@ -85,20 +97,36 @@ TEE_Result read_data(uint32_t params_types, TEE_Param params[4])
 	res = TEE_OpenPersistentObject(TEE_STORAGE_PRIVATE, obj_id, obj_id_size, flags, &object);
 	if (res != TEE_SUCCESS) {
 		EMSG("Persistent object openning failed : %x", res);
+		secure_free(obj_data, obj_data_size);
+		secure_free(obj_id, obj_id_size);
 		return res;
 	}
 
 	res = TEE_GetObjectInfo1(object, &object_info);
-
-	char *data;
-	uint32_t count = 0;
-	res = TEE_ReadObjectData(object, data, object_info.dataSize, &count);
 	if (res != TEE_SUCCESS) {
-		EMSG("Object data read failed : %x", res);
+		EMSG("Object data get info failed : %x", res);
+		secure_free(obj_data, obj_data_size);
+		secure_free(obj_id, obj_id_size);
 		return res;
 	}
 
-	TEE_MemMove(&obj_data, &data, count);
+	if (object_info.dataSize > obj_data_size) {
+		secure_free(obj_data, obj_data_size);
+		secure_free(obj_id, obj_id_size);
+		params[1].memref.size = object_info.dataSize;
+
+		return TEE_ERROR_SHORT_BUFFER;
+	}
+
+	uint32_t count = 0;
+	res = TEE_ReadObjectData(object, obj_data, object_info.dataSize, &count);
+	if (res != TEE_SUCCESS) {
+		EMSG("TEE_ReadObjectData failed 0x%08x, read %" PRIu32 " over %u",
+				res, count, object_info.dataSize);
+		return res;
+	}
+
+	TEE_MemMove(params[1].memref.buffer, obj_data, count);
 
 	TEE_CloseObject(object);
 
@@ -168,7 +196,9 @@ TEE_Result TA_InvokeCommandEntryPoint(void __unused *session_id,
 	case TA_VAULT_CMD_WRITE_DATA:
 		write_data(params_type, parameters);
 		break;
-
+	case TA_VAULT_CMD_READ_DATA:
+		read_data(params_type, parameters);
+		break;
 	default:
 		break;
 	}

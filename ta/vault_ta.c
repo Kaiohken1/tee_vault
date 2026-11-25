@@ -54,6 +54,51 @@ void secure_free(void *buffer, size_t buffer_size)
 		TEE_Free(buffer);
 }
 
+TEE_Result delete_data(uint32_t params_types, TEE_Param params[4]) {
+	TEE_ObjectHandle object = TEE_HANDLE_NULL;
+	TEE_Result res;
+
+	uint32_t exp_param_types = TEE_PARAM_TYPES(TEE_PARAM_TYPE_MEMREF_INPUT,
+											   TEE_PARAM_TYPE_NONE,
+											   TEE_PARAM_TYPE_NONE,
+											   TEE_PARAM_TYPE_NONE);
+
+	if (exp_param_types != params_types)
+		return TEE_ERROR_BAD_PARAMETERS;
+
+	if (params[0].memref.size > TEE_OBJECT_ID_MAX_LEN) {
+		return TEE_ERROR_EXCESS_DATA;
+	}
+
+	if (params[0].memref.size == 0) {
+		return TEE_ERROR_BAD_PARAMETERS;
+	}
+
+	size_t obj_id_size = params[0].memref.size;
+	char *obj_id = TEE_Malloc(obj_id_size, 0);
+	if (!obj_id) {
+		return TEE_ERROR_OUT_OF_MEMORY;
+	}
+
+	TEE_MemMove(obj_id, params[0].memref.buffer, obj_id_size);
+
+	res = TEE_OpenPersistentObject(TEE_STORAGE_PRIVATE, obj_id, obj_id_size, TEE_DATA_FLAG_ACCESS_READ | TEE_DATA_FLAG_ACCESS_WRITE_META, &object);
+	if (res != TEE_SUCCESS) {
+		EMSG("Persistent object openning failed : %x", res);
+		secure_free(obj_id, obj_id_size);
+		return res;
+	}
+
+	res = TEE_CloseAndDeletePersistentObject1(object);
+	if (res != TEE_SUCCESS) {
+		EMSG("Persistent object deletion failed : %x", res);
+	}
+
+	secure_free(obj_id, obj_id_size);
+	return res;
+}
+
+
 TEE_Result read_data(uint32_t params_types, TEE_Param params[4])
 {
 	uint32_t exp_param_types = TEE_PARAM_TYPES(TEE_PARAM_TYPE_MEMREF_INPUT,
@@ -97,6 +142,7 @@ TEE_Result read_data(uint32_t params_types, TEE_Param params[4])
 	res = TEE_OpenPersistentObject(TEE_STORAGE_PRIVATE, obj_id, obj_id_size, flags, &object);
 	if (res != TEE_SUCCESS) {
 		EMSG("Persistent object openning failed : %x", res);
+		params[1].memref.size = 0;
 		secure_free(obj_data, obj_data_size);
 		secure_free(obj_id, obj_id_size);
 		return res;
@@ -187,21 +233,19 @@ TEE_Result write_data(uint32_t params_types, TEE_Param params[4])
 }
 
 TEE_Result TA_InvokeCommandEntryPoint(void __unused *session_id,
-									  uint32_t command_id,
-									  uint32_t params_type,
-									  TEE_Param parameters[4])
+                                      uint32_t command_id,
+                                      uint32_t params_type,
+                                      TEE_Param parameters[4])
 {
-	switch (command_id)
-	{
-	case TA_VAULT_CMD_WRITE_DATA:
-		write_data(params_type, parameters);
-		break;
-	case TA_VAULT_CMD_READ_DATA:
-		read_data(params_type, parameters);
-		break;
-	default:
-		break;
-	}
-
-	return TEE_SUCCESS;
+    switch (command_id)
+    {
+    case TA_VAULT_CMD_WRITE_DATA:
+        return write_data(params_type, parameters);
+    case TA_VAULT_CMD_READ_DATA:
+        return read_data(params_type, parameters);
+    case TA_VAULT_CMD_DELETE_DATA:
+        return delete_data(params_type, parameters);
+    default:
+        return TEE_ERROR_NOT_SUPPORTED;
+    }
 }

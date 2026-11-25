@@ -18,5 +18,8 @@
 /* The function IDs implemented in this TA */
 #define TA_VAULT_CMD_WRITE_DATA		0
 #define TA_VAULT_CMD_READ_DATA		1
+#define TA_VAULT_CMD_DELETE_DATA	2
+
+#define READ_SIZE	7000
 
 #endif /*TA_VAULT_H*/

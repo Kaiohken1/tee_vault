@@ -18,6 +18,7 @@
 /* The function IDs implemented in this TA */
 #define TA_VAULT_CMD_WRITE_DATA		0
 #define TA_VAULT_CMD_READ_DATA		1
+#define TA_VAULT_CMD_DELETE_DATA	2
 
 #define TA_VAULT_PASSWORD "azerty"
 #define TA_MAX_SECRET_SIZE 1024
@@ -25,5 +26,7 @@
 TEE_Result write_data(uint32_t params_types, TEE_Param params[4]);
 void secure_free(void *buffer, size_t buffer_size);
 TEE_Result read_data(uint32_t params_types, TEE_Param params[4]);
+TEE_Result delete_data(uint32_t params_types, TEE_Param params[4]);
+
 
 #endif /*TA_VAULT_H*/

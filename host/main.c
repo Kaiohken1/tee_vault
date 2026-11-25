@@ -46,11 +46,32 @@ void read_input(InputBuffer *input_buffer)
 	input_buffer->buffer[bytes_read - 1] = 0;
 }
 
+void client_delete_data(TEEC_Session sess, TEEC_Operation op) {
+	InputBuffer *obj_id = new();
+	uint32_t err_origin;
+	TEEC_Result res;
+
+	printf("vault > Write entry name to delete : ");
+	read_input(obj_id);
+
+	op.paramTypes = TEEC_PARAM_TYPES(TEEC_MEMREF_TEMP_INPUT, TEEC_NONE,
+									 TEEC_NONE, TEEC_NONE);
+	
+	op.params[0].tmpref.buffer = obj_id->buffer;
+	op.params[0].tmpref.size = obj_id->input_length;
+
+	res = TEEC_InvokeCommand(&sess, TA_VAULT_CMD_DELETE_DATA, &op,
+					&err_origin);
+	
+	if (res != TEEC_SUCCESS)
+		printf("vault > [!] Failed to write data : code 0x%x origin 0x%u",
+			res, err_origin);
+	printf("vault > Data deleted successfully\n");
+}
+
 void client_read_data(TEEC_Session sess, TEEC_Operation op) {
 	InputBuffer *obj_id = new();
-	// InputBuffer *obj_read_data = new();
-	//TODO Change read buffer
-	char read_data[7000];
+	char read_data[READ_SIZE];
 	uint32_t err_origin;
 	TEEC_Result res;
 
@@ -69,11 +90,16 @@ void client_read_data(TEEC_Session sess, TEEC_Operation op) {
 	res = TEEC_InvokeCommand(&sess, TA_VAULT_CMD_READ_DATA, &op,
 					&err_origin);
 	
-	if (res != TEEC_SUCCESS)
-		errx(1, "vault > Failed to read data : code 0x%x origin 0x%u",
+	if (res != TEEC_SUCCESS) {
+		printf("vault > [!] Failed to read data : code 0x%x origin 0x%u\n",
 			res, err_origin);
+		return;
+	}
 	
-	printf("vault > data read : %s\n", op.params[1].tmpref.buffer);
+	printf("vault > data read : %.*s\n",
+       (int)op.params[1].tmpref.size, read_data);
+	
+	memset(read_data, 0, sizeof(read_data));
 }
 
 void client_write_data(TEEC_Session sess, TEEC_Operation op) {
@@ -100,7 +126,7 @@ void client_write_data(TEEC_Session sess, TEEC_Operation op) {
 					&err_origin);
 	
 	if (res != TEEC_SUCCESS)
-		errx(1, "vault > Failed to write data : code 0x%x origin 0x%u",
+		printf("vault > [!] Failed to write data : code 0x%x origin 0x%u",
 			res, err_origin);
 	printf("vault > Data written successfully\n");
 }
@@ -123,6 +149,10 @@ void repl(InputBuffer *input_buffer, TEEC_Session sess, TEEC_Operation op)
 		else if (strncmp(input_buffer->buffer, "read", 4) == 0)
 		{
 			client_read_data(sess, op);
+		} 
+		else if (strncmp(input_buffer->buffer, "delete", 6) == 0)
+		{
+			client_delete_data(sess, op);
 		} 
 		else
 		{
